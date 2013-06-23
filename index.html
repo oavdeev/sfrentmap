@@ -42,6 +42,8 @@ Radar = (function() {
         var keyword = keyword;
         var self = this;
         var markers = [];
+        var infoWindow = new google.maps.InfoWindow();
+        var service = new google.maps.places.PlacesService(map);
 
         this.clear = function() {
             $.each(markers, function(i,e) {
@@ -50,13 +52,33 @@ Radar = (function() {
             markers = [];
         }
 
-        function show_markers(latlons) {
-            $.each(latlons, function(i,ll) {
+        function show_markers(places) {
+            $.each(places, function(i,place) {
                 var marker = new google.maps.Marker({
-                    position: ll,
+                    position: place.geometry.location,
                     map: map,
-                    title:"Hello World!"
+                    title:keyword
                 }); 
+                google.maps.event.addListener(marker, 'click', function() {
+                    service.getDetails(place, function(result, status) {
+                        if (status != google.maps.places.PlacesServiceStatus.OK) {
+                            alert(status);
+                            return;
+                        }
+                        var content = 
+                        result.name + "<br/>" + 
+                        result.formatted_address + 
+                        "<br/> Rating " + result.rating;
+                        if (result.price_level) {
+                            content += '<br/>Price level: ' + result.price_level;
+                        }
+                        if (result.website) {
+                            content += '<br/><a href="' + result.website + '">' + result.website + '</a>';
+                        }
+                        infoWindow.setContent(content);
+                        infoWindow.open(map, marker);
+                    });
+                  });                
                 markers.push(marker);
             });
         }
@@ -69,9 +91,7 @@ Radar = (function() {
             var service = new google.maps.places.PlacesService(map);
             service.radarSearch(request, function(results, status) {
                 if (status == google.maps.places.PlacesServiceStatus.OK) {
-                    show_markers($.map(results, function(e,i) {
-                        return e.geometry.location;
-                    }));
+                    show_markers(results);
                 }    
             });
         }        
@@ -147,7 +167,7 @@ DistanceTool = (function() {
                     map: map,
                     title:"Hello World!",
                     draggable:true
-                }); 
+                });
                 google.maps.event.addListener(marker, 'dragend', function() 
                 {
                     update();
@@ -205,24 +225,29 @@ $(document).ready(function() {
     });
 
     function update_layers() {
-        if ($("#autoupdate").hasClass("active")) {
-            if ($("#bars-radar").hasClass("active")) {
-                bar_radar.update(map.getBounds());
-            }
-            if ($("#bars-heatmap").hasClass("active")) {
-                bar_heatmap.update(map.getBounds());
-            }
+        if ($("#bars-radar").hasClass("active")) {
+            bar_radar.update(map.getBounds());
+        }
+        if ($("#bars-heatmap").hasClass("active")) {
+            bar_heatmap.update(map.getBounds());
         }
     }
 
     google.maps.event.addListener(map, 'dragend', function() {
-        update_layers();
+        if ($("#autoupdate").hasClass("active")) {
+            update_layers();
+        }
     });    
 
     google.maps.event.addListener(map, 'zoom_changed', function() {
-        update_layers();
+        if ($("#autoupdate").hasClass("active")) {
+            update_layers();
+        }
     });    
 
+    $("#autoupdate").click(function() {
+        update_layers();
+    });
 
     distance_tool = new DistanceTool(map, function(d) { $("#distance-val").text(Math.round(d) + " meters"); });
 
