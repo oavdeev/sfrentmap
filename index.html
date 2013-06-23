@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>SF Rent mapping</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!-- Bootstrap -->
+    <link href="static/css/bootstrap.min.css" rel="stylesheet" media="screen">  
+    <link href="assets/css/bootstrap-responsive.css" rel="stylesheet">
+    <style type="text/css">
+      html { height: 100% }
+      body { height: 100%; margin: 0; padding: 0 }
+      #map-canvas { height: 100% ; margin-top: 5pt; }
+      #map-canvas img {
+          max-width: none;
+      }
+      #map-canvas img { width: auto; display:inline; }
+      #map-canvas label { 
+            width: auto; display:inline; 
+      } 
+    </style>    
+  </head>
+  <body>
+    <script type="text/javascript"
+      src="https://maps.googleapis.com/maps/api/js?key=AIzaSyAdI1P_LmIZyxfR05qkhdyqDjkAwtkrll8&sensor=false&libraries=places,visualization">
+    </script>
+
+    <script src="static/js/jquery.min.js"></script>
+    <script type="text/javascript">
+
+var map;
+var bar_radar;
+
+Radar = (function() {
+    function cls(map, keyword) {
+        var map = map;
+        var keyword = keyword;
+        var self = this;
+        var markers = [];
+
+        this.clear = function() {
+            $.each(markers, function(i,e) {
+                e.setMap(null);
+            });
+            markers = [];
+        }
+
+        function show_markers(latlons) {
+            $.each(latlons, function(i,ll) {
+                var marker = new google.maps.Marker({
+                    position: ll,
+                    map: map,
+                    title:"Hello World!"
+                }); 
+                markers.push(marker);
+            });
+        }
+
+        this.update = function(bounds) {
+            var request = {
+                bounds: bounds,
+                "keyword": keyword
+            };
+            var service = new google.maps.places.PlacesService(map);
+            service.radarSearch(request, function(results, status) {
+                if (status == google.maps.places.PlacesServiceStatus.OK) {
+                    show_markers($.map(results, function(e,i) {
+                        return e.geometry.location;
+                    }));
+                }    
+            });
+        }        
+    }
+
+    return cls;
+})();
+
+
+Heatmap = (function() {
+    function cls(map, keyword) {
+        var map = map;
+        var keyword = keyword;
+        var self = this;
+        var heatmap = null;
+
+        this.clear = function() {
+            if (heatmap != null) {
+                heatmap.setMap(null);
+                heatmap = null;
+            }
+        }
+
+        this.update = function(bounds) {
+            var request = {
+                bounds: bounds,
+                "keyword": keyword
+            };
+            var service = new google.maps.places.PlacesService(map);
+            service.radarSearch(request, function(results, status) {
+                if (status == google.maps.places.PlacesServiceStatus.OK) {
+                    self.clear();
+                    heatmap = new google.maps.visualization.HeatmapLayer({
+                        radius : 20,
+                        data: $.map(results, function(e,i) {
+                                  return e.geometry.location;
+                              })
+                    });
+                    heatmap.setMap(map);
+                }
+            });
+        }        
+    }
+
+    return cls;
+})();
+
+DistanceTool = (function() {
+    function cls(map, callback) {
+        var map = map;
+        var self = this;
+        var points = [];
+
+        this.clear = function() {
+            $.each(points, function(i,e) {
+                e.setMap(null);
+            });
+            points = [];            
+        }
+
+        function update() {
+            var a = points[0].getPosition();
+            var b = points[1].getPosition();
+            $.get("/tools/distance", {a: a.lng() + "," + a.lat(), b: b.lng() + "," + b.lat() }, callback);
+        }
+
+        this.add_point = function(ll) {
+            if (points.length == 2) {
+                self.clear();
+            } else {
+                var marker = new google.maps.Marker({
+                    position: ll,
+                    map: map,
+                    title:"Hello World!",
+                    draggable:true
+                }); 
+                google.maps.event.addListener(marker, 'dragend', function() 
+                {
+                    update();
+                });                
+                points.push(marker);
+                if (points.length == 2) {
+                    update();
+                }
+            }
+        }        
+    }
+
+    return cls;
+})();
+
+$(document).ready(function() {
+    var sf = new google.maps.LatLng(37.782260244976065, -122.42047842297366);
+
+    var mapOptions = {
+        center: sf,
+        zoom: 14,
+        mapTypeId: google.maps.MapTypeId.ROADMAP
+    };
+
+    map = new google.maps.Map(document.getElementById("map-canvas"), mapOptions);
+
+    var myLatlng = new google.maps.LatLng(-25.363882,131.044922);
+    var marker = new google.maps.Marker({
+        position: myLatlng,
+        map: map,
+        title:"Hello World!"
+    }); 
+
+    google.maps.event.addListener(map, 'center_changed', function() {
+        $('#center-coordinates').text(map.getCenter());
+    });
+
+    bar_radar = new Radar(map, "bar");
+    bar_heatmap = new Heatmap(map, "bar");
+
+    $("body").on("click", '#bars-radar', function() {
+        if ($(this).hasClass("active")) {
+            bar_radar.clear();
+        } else {
+            bar_radar.update(map.getBounds());
+        }
+    });
+
+    $("body").on("click", '#bars-heatmap', function() {
+        if ($(this).hasClass("active")) {
+            bar_heatmap.clear();
+        } else {
+            bar_heatmap.update(map.getBounds());
+        }
+    });
+
+    function update_layers() {
+        if ($("#autoupdate").hasClass("active")) {
+            if ($("#bars-radar").hasClass("active")) {
+                bar_radar.update(map.getBounds());
+            }
+            if ($("#bars-heatmap").hasClass("active")) {
+                bar_heatmap.update(map.getBounds());
+            }
+        }
+    }
+
+    google.maps.event.addListener(map, 'dragend', function() {
+        update_layers();
+    });    
+
+    google.maps.event.addListener(map, 'zoom_changed', function() {
+        update_layers();
+    });    
+
+
+    distance_tool = new DistanceTool(map, function(d) { $("#distance-val").text(Math.round(d) + " meters"); });
+
+    google.maps.event.addListener(map, 'click', function(e) {
+        if ($("#distance-tool").hasClass("active")) {
+            distance_tool.add_point(e.latLng);            
+        }        
+    });
+
+    $("#distance-tool").click(function() {
+        if ($(this).hasClass("active")) {
+            distance_tool.clear();
+            $("#distance").hide();
+        } else {
+            $("#distance").show();
+        }
+    });
+
+    geocoder = new google.maps.Geocoder();
+    $('#search-btn').click(function() {
+        var address = $('#location').val();
+        geocoder.geocode( { 'address': address}, function(results, status) {
+            if (status == google.maps.GeocoderStatus.OK) {
+                map.setCenter(results[0].geometry.location);
+            } else {
+                alert('Could not find "' + address + '": ' + status);
+            }
+        });
+    });
+
+});
+
+</script>    
+    <div class="row">
+        <div class="span8">
+            <h1>San Francisco Rent Map</h1>
+            <h6><span class="hide">Map Center:<span id="center-coordinates"></span></span></h6>
+        </div>
+        <div style="float:right;">
+            <form class="form-search" style="margin-top:15pt;">
+                <label for="location">Location search</label>
+                <input type="text" class="input-medium search-query" id="location">
+                <button type="button" class="btn" id="search-btn">Go</button>
+            </form>
+        </div>        
+    </div>
+    <div class="row">
+        <div class="span8">
+            <div class="btn-group" data-toggle="buttons-checkbox">
+            <button class="btn" type="button" id="bars-radar">Bars radar</button>
+            <button class="btn" type="button" id="bars-heatmap">Bars heatmap</button>
+            </div>
+            
+            <div class="btn-group" data-toggle="buttons-checkbox">
+            <button class="btn btn-info" type="button" id="autoupdate">Autoupdate</button>
+            </div>
+        </div>
+
+        <div class="span2">
+            <div class="btn-group" data-toggle="buttons-checkbox">
+            <button class="btn btn-inverse" type="button" id="distance-tool"><i class="icon-resize-vertical icon-white" style="margin-top: 0px;"></i> Distance tool</button>
+            </div>
+            <h6 id="distance" class="hide">Distance: <span id="distance-val"></span></h6>
+        </div>
+    </div>
+    <div id="map-canvas"/>
+    <script src="static/js/bootstrap.min.js"></script>
+  </body>
+</html>
