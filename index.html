@@ -5,18 +5,24 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <!-- Bootstrap -->
     <link href="static/css/bootstrap.min.css" rel="stylesheet" media="screen">  
-    <link href="assets/css/bootstrap-responsive.css" rel="stylesheet">
+    <!-- <link href="static/css/bootstrap-responsive.css" rel="stylesheet"> -->
     <style type="text/css">
       html { height: 100% }
       body { height: 100%; margin: 0; padding: 0 }
+      #area-map-canvas { height: 400px ; margin-top: 5pt; }
       #map-canvas { height: 100% ; margin-top: 5pt; }
-      #map-canvas img {
+      #map-canvas img, #area-map-canvas img {
           max-width: none;
-      }
-      #map-canvas img { width: auto; display:inline; }
-      #map-canvas label { 
+          width: auto; 
+          display:inline;
+      }      
+      #map-canvas label, #area-map-canvas label { 
             width: auto; display:inline; 
       } 
+
+      .modal-body {
+        max-height: 800px;
+      }   
     </style>    
   </head>
   <body>
@@ -28,7 +34,7 @@
     <script type="text/javascript">
 
 var map;
-var bar_radar;
+var compare_poly = null;
 
 Radar = (function() {
     function cls(map, keyword) {
@@ -245,9 +251,48 @@ $(document).ready(function() {
                 alert('Could not find "' + address + '": ' + status);
             }
         });
+        return false;
     });
 
+    $('#compare-hide').click(function() {
+        compare_poly.setVisible(false);        
+    });
+
+    $('#compare-show').click(function() {
+        compare_poly.setVisible(true);        
+    });
 });
+
+function update_compare_poly(polypoints) {
+    var center = map.getCenter();
+    if (compare_poly != null) {
+        compare_poly.setMap(null);
+        compare_poly = null;
+    }
+
+    var coords = [];
+    for (i = 0; i < polypoints.getLength(); i++) {
+        coords.push(polypoints.getAt(i).lng());
+        coords.push(polypoints.getAt(i).lat());
+    }
+    $.get('/tools/polyconvert', {dst : center.lng() + "," + center.lat(),
+                                 pts: coords.join(",")
+                                }, function(r) {
+        var points = $.map(r, function(e, i) {
+            return new google.maps.LatLng(e.lat, e.lng);
+        });
+        compare_poly = new google.maps.Polyline({
+            path: points,
+            strokeColor: '#FF0000',
+            strokeOpacity: 0.8,
+            strokeWeight: 4,
+            editable: false,
+            draggable: true
+          });
+
+        compare_poly.setMap(map);
+    });
+}
 
 </script>    
     <div class="row">
@@ -259,7 +304,7 @@ $(document).ready(function() {
             <form class="form-search" style="margin-top:15pt;">
                 <label for="location">Location search</label>
                 <input type="text" class="input-medium search-query" id="location">
-                <button type="button" class="btn" id="search-btn">Go</button>
+                <button type="submit" class="btn" id="search-btn">Go</button>
             </form>
         </div>        
     </div>
@@ -281,7 +326,103 @@ $(document).ready(function() {
             </div>
             <h6 id="distance" class="hide">Distance: <span id="distance-val"></span></h6>
         </div>
+
+        <div class="span2">
+            <div class="btn-group">
+            <button href="#area-modal" class="btn btn-primary" type="button" id="area-compare" data-toggle="modal">Compare map</button>
+            <button class="btn dropdown-toggle" data-toggle="dropdown">
+                <span class="caret"></span>
+            </button>
+            <ul class="dropdown-menu">
+                <li><a href="#" id="compare-show">Show</a></li>
+                <li><a href="#" id="compare-hide">Hide</a></li>
+            </ul>
+            </div>
+        </div>
+
     </div>
+    <div class="modal hide fade" id="area-modal">
+        <div class="modal-header">
+            <button type="button" class="close" data-dismiss="modal" aria-hidden="true">&times;</button>
+            <h3>Define area to compare to</h3>
+        </div>
+        <div class="modal-body">
+            <form class="form-search">
+                <label for="area-location">Location search</label>
+                <input type="text" class="input-medium search-query" id="area-location">
+                <button type="submit" class="btn" id="area-search-btn">Go</button>
+            </form>            
+            <button type="button" class="btn" id="area-clear-btn">Clear</button>
+            <div id="area-map-canvas"></div>
+        </div>
+        <div class="modal-footer">
+            <a href="#" class="btn" id="area-cancel-btn">Close</a>
+            <a href="#" class="btn btn-primary" id="area-save-btn">Save changes</a>
+        </div>
+    </div>
+    <script type="text/javascript">
+var area_map = null;
+var edit_poly = null;
+var polypoints = new google.maps.MVCArray();
+
+$('#area-modal').on('show', function () { 
+    if (area_map == null) {
+        var mapOptions = {
+            center: map.getCenter(),
+            zoom: 14,
+            mapTypeId: google.maps.MapTypeId.ROADMAP
+        };
+        area_map = new google.maps.Map(document.getElementById("area-map-canvas"), mapOptions);
+        google.maps.event.addListener(area_map, 'click', function(e) {
+            polypoints.push(e.latLng);
+            edit_poly.setPath(polypoints);
+        });
+    }
+
+    if (edit_poly == null) {
+        edit_poly = new google.maps.Polyline({
+            path: polypoints,
+            strokeColor: '#FF0000',
+            strokeOpacity: 0.8,
+            strokeWeight: 4,
+            editable: true
+          });
+
+        edit_poly.setMap(area_map);
+    }
+});
+
+$('#area-save-btn').click(function() {
+    update_compare_poly(edit_poly.getPath());
+    $('#area-modal').modal('hide');
+});
+
+$('#area-cancel-btn').click(function() {
+    polypoints = new google.maps.MVCArray();
+    $('#area-modal').modal('hide');
+});
+
+$('#area-clear-btn').click(function() {
+    polypoints.clear();
+});
+
+$('#area-search-btn').click(function() {
+    var geocoder = new google.maps.Geocoder();
+    var address = $('#area-location').val();
+    geocoder.geocode( { 'address': address}, function(results, status) {
+        if (status == google.maps.GeocoderStatus.OK) {
+            area_map.setCenter(results[0].geometry.location);
+        } else {
+            alert('Could not find "' + address + '": ' + status);
+        }
+    });        
+    return false;
+});
+
+$('#area-modal').on('shown', function () {
+    google.maps.event.trigger(area_map, "resize");
+});
+    </script>
     <div id="map-canvas"/>
     <script src="static/js/bootstrap.min.js"></script>
   </body>

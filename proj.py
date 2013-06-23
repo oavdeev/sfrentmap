@@ -30,9 +30,10 @@ def convert_points(pts, dst):
 
     pts_utm_from = [pyproj.transform(wgs84, utm_from, *p) for p in pts]
 
-    origin_utm_from = pyproj.transform(wgs84, utm_to, *origin)
+    origin_utm_from = pyproj.transform(wgs84, utm_from, *origin)
     dst_utm_to = pyproj.transform(wgs84, utm_to, *dst)
 
+    pts_utm_to = []
     for p in pts_utm_from:
         x = dst_utm_to[0] + (p[0] - origin_utm_from[0])
         y = dst_utm_to[1] + (p[1] - origin_utm_from[1])
