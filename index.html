@@ -10,7 +10,13 @@
       html { height: 100% }
       body { height: 100%; margin: 0; padding: 0 }
       #area-map-canvas { height: 400px ; margin-top: 5pt; }
-      #map-canvas { height: 100% ; margin-top: 5pt; }
+      #map-canvas { 
+        margin-top: 5pt; 
+        min-height: 88%;
+        height:     auto !important;
+        height:     88%;
+
+      }
       #map-canvas img, #area-map-canvas img {
           max-width: none;
           width: auto; 
@@ -22,7 +28,11 @@
 
       .modal-body {
         max-height: 800px;
-      }   
+      }
+
+      .inline-label {
+        line-height: 30px;
+      }
     </style>    
   </head>
   <body>
@@ -34,6 +44,7 @@
     <script type="text/javascript">
 
 var map;
+var craigslist = null;
 var compare_poly = null;
 
 Radar = (function() {
@@ -208,6 +219,8 @@ $(document).ready(function() {
     bar_radar = new Radar(map, "bar");
     bar_heatmap = new Heatmap(map, "bar");
 
+    craigslist = new CraigslistLayer(map);
+
     $("body").on("click", '#bars-radar', function() {
         if ($(this).hasClass("active")) {
             bar_radar.clear();
@@ -364,6 +377,18 @@ function update_compare_poly(polypoints) {
             </ul>
             </div>
         </div>
+        <div class="span2">
+            <div class="btn-group">
+            <button href="#craigslist-modal" class="btn btn-warning" type="button" id="craigslist-btn" data-toggle="modal">Craigslist Apts</button>
+            <button class="btn dropdown-toggle" data-toggle="dropdown">
+                <span class="caret"></span>
+            </button>
+            <ul class="dropdown-menu">
+                <li><a href="#" id="craigslist-show">Show</a></li>
+                <li><a href="#" id="craigslist-hide">Hide</a></li>
+            </ul>
+            </div>
+        </div>
 
     </div>
     <div class="modal hide fade" id="area-modal">
@@ -448,6 +473,97 @@ $('#area-modal').on('shown', function () {
     google.maps.event.trigger(area_map, "resize");
 });
     </script>
+
+    <div class="modal hide fade" id="craigslist-modal">
+        <div class="modal-header">
+            <button type="button" class="close" data-dismiss="modal" aria-hidden="true">&times;</button>
+            <h3>Craigslist apartment search</h3>
+        </div>
+        <div class="modal-body">
+            <form class="form-horizontal">
+                <div class="control-group">
+                    <span class="control-label">Price:</span>
+                    <div class="controls form-inline">
+                        <label for="min-ask" class="inline-label">Min </label>
+                            <input class="input-small" id="min-ask" placeholder="Any" type="text">                        
+                        <label for="max-ask" class="inline-label">Max </label>
+                            <input class="input-small" id="max-ask" placeholder="Any" type="text">                        
+                    </div>
+                </div>
+
+                <div class="control-group">
+                    <label class="control-label" for="bedrooms">Bedrooms</label>
+                    <div class="controls">
+                    <select id="bedrooms">
+                      <option>1</option>
+                      <option>2</option>
+                      <option>3</option>
+                      <option>4</option>
+                      <option>5</option>
+                    </select>
+                    </div>
+                </div>
+            </form>                        
+        </div>
+        <div class="modal-footer">
+            <a href="#" class="btn" id="craigslist-cancel-btn">Close</a>
+            <a href="#" class="btn btn-primary" id="craigslist-save-btn">Show on map</a>
+        </div>
+    </div>
+    
+    <script type="text/javascript">
+
+CraigslistLayer = (function() {
+    function cls(map) {
+        var map = map;
+        var self = this;
+        var markers = [];
+        var infoWindow = new google.maps.InfoWindow();
+
+        this.clear = function() {
+            $.each(markers, function(i,e) {
+                e.setMap(null);
+            });
+            markers = [];
+        }
+
+        function show_markers(places) {
+            $.each(places, function(i,place) {
+                var marker = new google.maps.Marker({
+                    position: new google.maps.LatLng(place.Latitude, place.Longitude),
+                    map: map,
+                    title:place.PostingTitle
+                }); 
+                google.maps.event.addListener(marker, 'click', function() {
+                    var content = '<h4>' + place.PostingTitle + '<h4/>' +
+                    "<p><a target='_blank' href='" + place.PostingURL + "'>$" + place.Ask + "</a></p>"  +
+                    "<p><img src='" + place.ImageThumb + "'/></p>";
+
+                    infoWindow.setContent(content);
+                    infoWindow.open(map, marker);
+                  });                
+                markers.push(marker);
+            });
+        }
+
+        this.update = function(min_ask, max_ask, bedrooms) {
+            self.clear();
+            $.get("/craigslist/sfc", {min_ask:min_ask, max_ask:max_ask, bedrooms:bedrooms}, function(data) {
+                show_markers(data[0]);
+            });
+        }        
+    }
+
+    return cls;
+})();
+
+$('#craigslist-save-btn').click(function() {
+    craigslist.update($('#min-ask').val(), $('#max-ask').val(), $('#bedrooms').val());
+    $('#craigslist-modal').modal('hide');
+    return false;
+});
+    </script>
+
     <div id="map-canvas"/>
     <script src="static/js/bootstrap.min.js"></script>
   </body>

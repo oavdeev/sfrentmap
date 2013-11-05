@@ -1,6 +1,11 @@
+from gevent import monkey
+monkey.patch_all()
+
 from bottle import route, run, template, static_file, request, response
 import proj
 import json
+import urllib2
+
 
 @route('/')
 def index():
@@ -20,9 +25,23 @@ def distance():
     response.content_type = 'application/json'
     return json.dumps([{'lng' : x, 'lat': y} for x,y in result])
 
+@route('/craigslist/<area>')
+def craigslist(area):
+    params = {
+    'area' : area,
+    'flavor' : request.query.get('flavor', 'sfbay'),
+    'min_ask' : request.query.get('min_ask', ''),
+    'max_ask' : request.query.get('max_ask', ''),
+    'bedrooms' : request.query.get('bedrooms', '')
+    }
+
+    url = 'http://%(flavor)s.craigslist.org/jsonsearch/apa/%(area)s?useMap=1&zoomToPosting=&query=&srchType=A&minAsk=%(min_ask)s&maxAsk=%(max_ask)s&bedrooms=%(bedrooms)s' % params
+    response.content_type = 'application/json'
+    return urllib2.urlopen(url).read()
+
 @route('/static/<filename:path>')
 def static(filename):
     print filename
     return static_file(filename, root='static')
 
-run(host='localhost', port=8080)
+run(host='localhost', port=8080, server='gevent')
